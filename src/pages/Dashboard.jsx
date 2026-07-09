@@ -6,6 +6,17 @@ import ExpenseForm from "../components/ExpenseForm";
 import ExpenseList from "../components/ExpenseList";
 import CategorySummary from "../components/CategorySummary";
 
+import { db, auth } from "../firebase";
+
+
+import {
+  collection,
+  addDoc,
+  getDocs,
+  deleteDoc,
+  doc,
+} from "firebase/firestore";
+
 function Dashboard() {
   // Budget
   const [budget, setBudget] = useState(() => {
@@ -20,70 +31,89 @@ function Dashboard() {
   const [selectedCategory, setSelectedCategory] = useState("All");
 
   // Expenses
-  const [expenses, setExpenses] = useState(() => {
-    const savedExpenses = localStorage.getItem("expenses");
+  const [expenses, setExpenses] = useState([]);
 
-    return savedExpenses
-      ? JSON.parse(savedExpenses)
-      : [
-          {
-            id: 1,
-            name: "Netflix",
-            amount: 15,
-            category: "Entertainment",
-            date: "01 Jul 2026",
-          },
-          {
-            id: 2,
-            name: "Fuel",
-            amount: 40,
-            category: "Transport",
-            date: "03 Jul 2026",
-          },
-          {
-            id: 3,
-            name: "Groceries",
-            amount: 90,
-            category: "Food",
-            date: "05 Jul 2026",
-          },
-        ];
-  });
+  // Firestore Collection
+  const expensesCollection = collection(
+    db,
+    "users",
+    auth.currentUser.uid,
+    "expenses"
+  );
 
-  // Save expenses
+  // Load Expenses
+
+  const loadExpenses = async () => {
+    try {
+      const snapshot = await getDocs(expensesCollection);
+
+      const loadedExpenses = snapshot.docs.map((doc) => ({
+        id: doc.id,
+        ...doc.data(),
+      }));
+
+      setExpenses(loadedExpenses);
+    } catch (error) {
+      console.log(error);
+    }
+  };
+
   useEffect(() => {
-    localStorage.setItem("expenses", JSON.stringify(expenses));
-  }, [expenses]);
+    loadExpenses();
+  }, []);
 
-  // Save budget
+  // Save Budget
   useEffect(() => {
     localStorage.setItem("budget", budget);
   }, [budget]);
 
   // Add Expense
-  const addExpense = (newExpense) => {
-    setExpenses([
-      ...expenses,
-      {
-        id: Date.now(),
-        ...newExpense,
-      },
-    ]);
-  };
+const addExpense = async (newExpense) => {
+  
+  console.log("Adding expense:", newExpense);
+  console.log("Current User:", auth.currentUser);
+  console.log("Current UID:", auth.currentUser?.uid);
+  try {
+    await addDoc(expensesCollection, newExpense);
+    console.log("Expense saved!");
+
+    await loadExpenses();
+  } catch (error) {
+    console.log("Error:", error);
+  }
+};
 
   // Delete Expense
-  const deleteExpense = (id) => {
-    setExpenses(expenses.filter((expense) => expense.id !== id));
+  const deleteExpense = async (id) => {
+    try {
+      await deleteDoc(
+        doc(db, "users", auth.currentUser.uid, "expenses", id)
+      );
+
+      await loadExpenses();
+    } catch (error) {
+      console.log(error);
+    }
   };
 
   // Clear Expenses
-  const clearExpenses = () => {
-    setExpenses([]);
+  const clearExpenses = async () => {
+    try {
+      const snapshot = await getDocs(expensesCollection);
+
+      for (const expense of snapshot.docs) {
+        await deleteDoc(expense.ref);
+      }
+
+      setExpenses([]);
+    } catch (error) {
+      console.log(error);
+    }
   };
 
   // Totals
   const totalSpent = expenses.reduce(
-    (total, expense) => total + expense.amount,
+    (total, expense) => total + Number(expense.amount),
     0
   );
 
